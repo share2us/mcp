@@ -1,0 +1,4 @@
+/share2us-mcp-local
+*.exe
+*.test
+*.out
