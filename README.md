@@ -29,4 +29,12 @@ See [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## License
 
-[MIT](LICENSE.md) © Share2Us
+[GNU General Public License v3.0 only](LICENSE) © 2026 Hassan Khurram
+
+The Share2Us MCP server is free software: you may use, study, share and modify
+it. If you distribute it — modified or not — you must pass on the same freedoms
+and make the corresponding source available under the GPL.
+
+Releases published before 2026-09-07 (module `v0.1.0`) remain under the MIT
+licence they were issued with; a licence already granted cannot be withdrawn.
+Dependency licences are listed in [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md).
