@@ -147,6 +147,12 @@ func detectContentType(name string, sample []byte) string {
 func contentClass(name, contentType string) string {
 	ext := strings.ToLower(filepath.Ext(name))
 	switch {
+	// Markdown BEFORE the text/ prefix, because text/markdown matches that prefix
+	// and would otherwise be reported as plain "text". The server keys its preview
+	// on the class alone, so a .md sent as "text" rendered unformatted -- every
+	// markdown file an agent shared came out as plain text on the share page.
+	case ext == ".md", ext == ".markdown", contentType == "text/markdown":
+		return "markdown"
 	case strings.HasPrefix(contentType, "text/"), contentType == "application/json", contentType == "application/xml":
 		return "text"
 	case ext == ".zip" || contentType == "application/zip":
