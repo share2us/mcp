@@ -315,7 +315,13 @@ func (s *Server) uploadFile(ctx context.Context, raw json.RawMessage) (any, erro
 	if result.Protection == preflight.ProtectionSoft && !args.OverrideSoftBlock {
 		return nil, errors.New("upload refused: soft-block findings require override_soft_block: true")
 	}
-	return uploadBytes(ctx, client, s.recipientBase, result.Filename, result.ContentType, result.ContentClass, result.RequestedExpiry, result.SHA256, result.SizeBytes, func() (io.ReadCloser, error) {
+	sourceRef, _, err := clicore.SourceRefForPath(result.CanonicalPath)
+	if err != nil {
+		// Without a source ref the upload still works, it just will not dedup --
+		// a new link rather than a failed share. Never fail the share over it.
+		sourceRef = ""
+	}
+	return uploadBytes(ctx, client, s.recipientBase, result.Filename, result.ContentType, result.ContentClass, result.RequestedExpiry, result.SHA256, sourceRef, result.SizeBytes, func() (io.ReadCloser, error) {
 		return os.Open(result.CanonicalPath)
 	})
 }
@@ -355,7 +361,7 @@ func (s *Server) shareText(ctx context.Context, raw json.RawMessage) (any, error
 		expiresIn = "24h"
 	}
 	sum := sha256String(args.Text)
-	return uploadBytes(ctx, client, s.recipientBase, name, "text/plain; charset=utf-8", "text", expiresIn, sum, uint64(len(args.Text)), func() (io.ReadCloser, error) {
+	return uploadBytes(ctx, client, s.recipientBase, name, "text/plain; charset=utf-8", "text", expiresIn, sum, "", uint64(len(args.Text)), func() (io.ReadCloser, error) {
 		return io.NopCloser(strings.NewReader(args.Text)), nil
 	})
 }
@@ -458,7 +464,12 @@ func (s *Server) getPlanLimits(ctx context.Context, raw json.RawMessage) (any, e
 	}, nil
 }
 
-func uploadBytes(ctx context.Context, client Client, recipientBase, name, contentType, contentClass, expiresIn, sum string, size uint64, open func() (io.ReadCloser, error)) (any, error) {
+// sourceRef is sha256 of the file's canonical path, or "" when there is no file
+// behind the upload. It is what makes re-sharing the SAME file keep its link:
+// the server dedups on it, so a second share resolves to the existing one
+// instead of minting a new public id. The CLI has always sent it; MCP never did,
+// so every agent re-share produced a different link for the same file.
+func uploadBytes(ctx context.Context, client Client, recipientBase, name, contentType, contentClass, expiresIn, sum, sourceRef string, size uint64, open func() (io.ReadCloser, error)) (any, error) {
 	apiExpiry, err := clicore.DurationForAPI(expiresIn)
 	if err != nil {
 		return nil, err
@@ -470,6 +481,9 @@ func uploadBytes(ctx context.Context, client Client, recipientBase, name, conten
 		ContentClass: contentClass,
 		ExpiresIn:    apiExpiry,
 		SHA256:       sum,
+		// omitempty, so a text share (no file on disk) sends nothing and stays
+		// genuinely new each time, which is the right answer for pasted text.
+		SourceRef:    sourceRef,
 		// Every upload through the MCP tools is an AI-agent upload; declare it so
 		// the share records source_type='mcp' (AGENTS.md #7 — no silent agent uploads).
 		Source: "mcp",
