@@ -58,3 +58,39 @@ func TestPrivateKeyContentHardBlocks(t *testing.T) {
 		t.Fatalf("protection = %s", result.Protection)
 	}
 }
+
+// A .md must be classified as markdown, not swallowed by the text/ prefix.
+//
+// text/markdown starts with "text/", so before this the MIME branch matched first
+// and every markdown file an agent uploaded was sent as class "text". The server
+// renders its preview from the class alone, so the share page showed raw markdown
+// source instead of formatted output.
+func TestContentClassMarkdown(t *testing.T) {
+	markdown := []struct{ name, ctype string }{
+		{"notes.md", "text/markdown"},
+		{"notes.md", "text/plain"},        // MIME guessed wrong, extension still decides
+		{"NOTES.MD", ""},                  // no MIME at all
+		{"readme.markdown", "text/markdown"},
+		{"doc.txt", "text/markdown"},      // MIME is explicit even when the name is not
+	}
+	for _, c := range markdown {
+		if got := contentClass(c.name, c.ctype); got != "markdown" {
+			t.Errorf("contentClass(%q, %q) = %q, want markdown", c.name, c.ctype, got)
+		}
+	}
+
+	// Everything else keeps its old answer -- this must not widen into "call
+	// anything markdown".
+	others := []struct{ name, ctype, want string }{
+		{"notes.txt", "text/plain", "text"},
+		{"data.json", "application/json", "text"},
+		{"archive.zip", "application/zip", "zip"},
+		{"binary.bin", "application/octet-stream", "binary"},
+		{"notes.mdx", "application/octet-stream", "binary"},
+	}
+	for _, c := range others {
+		if got := contentClass(c.name, c.ctype); got != c.want {
+			t.Errorf("contentClass(%q, %q) = %q, want %q", c.name, c.ctype, got, c.want)
+		}
+	}
+}

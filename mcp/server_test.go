@@ -7,7 +7,10 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"fmt"
 	"io"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -176,9 +179,13 @@ func testServer(client *fakeClient) *Server {
 
 type fakeClient struct {
 	previewProtection preflight.Protection
+	// lastCreate records what was actually sent, so a test can assert on the
+	// request rather than only on the reply.
+	lastCreate clicore.UploadCreateRequest
 }
 
-func (f *fakeClient) CreateUpload(context.Context, clicore.UploadCreateRequest) (clicore.UploadCreateResponse, error) {
+func (f *fakeClient) CreateUpload(_ context.Context, req clicore.UploadCreateRequest) (clicore.UploadCreateResponse, error) {
+	f.lastCreate = req
 	return clicore.UploadCreateResponse{
 		Upload:          clicore.PresignedUpload{URL: "https://upload.example.test", Method: "PUT"},
 		Share:           clicore.ShareRef{PublicID: "pub-1"},
@@ -213,4 +220,63 @@ func (f *fakeClient) Usage(context.Context) (clicore.UsageResponse, error) {
 
 func mustRaw(value string) json.RawMessage {
 	return json.RawMessage(value)
+}
+
+// Re-sharing the same file through MCP must keep its link.
+//
+// The server dedups on source_ref (sha256 of the canonical path). The CLI has
+// always sent it; MCP sent nothing, so every agent re-share of the same file
+// minted a NEW public id and the link changed underneath the user. A text share
+// has no file behind it and must still send nothing, so pasted text stays
+// genuinely new each time.
+func TestUploadSendsSourceRefSoResharesKeepTheirLink(t *testing.T) {
+	client := &fakeClient{}
+	server := testServer(client)
+
+	// The harness builds CanonicalPath as "/tmp/"+path, and the upload really
+	// opens it, so the file has to exist there. 5 bytes to match the fake's
+	// SizeBytes.
+	name := fmt.Sprintf("s2u-srcref-%d.txt", time.Now().UnixNano())
+	full := filepath.Join("/tmp", name)
+	if err := os.WriteFile(full, []byte("hello"), 0o600); err != nil {
+		t.Fatalf("WriteFile() error = %v", err)
+	}
+	t.Cleanup(func() { _ = os.Remove(full) })
+	args := mustRaw(fmt.Sprintf(`{"path":%q,"confirm":true}`, name))
+
+	if _, err := server.previewFile(t.Context(), mustRaw(fmt.Sprintf(`{"path":%q}`, name))); err != nil {
+		t.Fatalf("previewFile() error = %v", err)
+	}
+	if _, err := server.uploadFile(t.Context(), args); err != nil {
+		t.Fatalf("uploadFile() error = %v", err)
+	}
+	want, _, err := clicore.SourceRefForPath(full)
+	if err != nil {
+		t.Fatalf("SourceRefForPath() error = %v", err)
+	}
+	if client.lastCreate.SourceRef != want {
+		t.Errorf("file share SourceRef = %q, want %q (sha256 of the canonical path)",
+			client.lastCreate.SourceRef, want)
+	}
+
+	// A second share of the same path sends the SAME ref, which is what lets the
+	// server resolve it to the existing share instead of creating another.
+	first := client.lastCreate.SourceRef
+	if _, err := server.uploadFile(t.Context(), args); err != nil {
+		t.Fatalf("second uploadFile() error = %v", err)
+	}
+	if client.lastCreate.SourceRef != first {
+		t.Errorf("re-share SourceRef = %q, want the same %q", client.lastCreate.SourceRef, first)
+	}
+}
+
+func TestShareTextSendsNoSourceRef(t *testing.T) {
+	client := &fakeClient{}
+	server := testServer(client)
+	if _, err := server.shareText(t.Context(), mustRaw(`{"text":"just some notes","confirm":true}`)); err != nil {
+		t.Fatalf("shareText() error = %v", err)
+	}
+	if client.lastCreate.SourceRef != "" {
+		t.Errorf("text share SourceRef = %q, want empty (no file behind it)", client.lastCreate.SourceRef)
+	}
 }
