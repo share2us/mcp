@@ -6,6 +6,7 @@ package mcp
 import (
 	"bytes"
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -33,7 +34,7 @@ func TestToolsListSchema(t *testing.T) {
 	if err := json.Unmarshal(out.Bytes(), &resp); err != nil {
 		t.Fatalf("decode response: %v", err)
 	}
-	if len(resp.Result.Tools) != 9 {
+	if len(resp.Result.Tools) != 10 {
 		t.Fatalf("tools = %d", len(resp.Result.Tools))
 	}
 	if resp.Result.Tools[0].Name != "share2us_preview_file" {
@@ -278,5 +279,62 @@ func TestShareTextSendsNoSourceRef(t *testing.T) {
 	}
 	if client.lastCreate.SourceRef != "" {
 		t.Errorf("text share SourceRef = %q, want empty (no file behind it)", client.lastCreate.SourceRef)
+	}
+}
+
+func TestShareFileCleanBytes(t *testing.T) {
+	server := testServer(&fakeClient{})
+	// base64("hello world")
+	body := `{"name":"note.txt","data_base64":"aGVsbG8gd29ybGQ="}`
+	res, err := server.shareFile(t.Context(), mustRaw(body))
+	if err != nil {
+		t.Fatalf("shareFile() clean error = %v", err)
+	}
+	raw, _ := json.Marshal(res)
+	if !strings.Contains(string(raw), "pub-1") {
+		t.Fatalf("result missing share id: %s", raw)
+	}
+}
+
+func TestShareFileRefusesSecret(t *testing.T) {
+	server := testServer(&fakeClient{})
+	key := "-----BEGIN OPENSSH PRIVATE KEY-----\nb3BlbnNzaC1rZXktdjEAAAAABG5vbmUAAAAEbm9uZQAAAAAAAAAB\n-----END OPENSSH PRIVATE KEY-----\n"
+	body := `{"name":"id_ed25519","data_base64":"` + base64.StdEncoding.EncodeToString([]byte(key)) + `"}`
+	if _, err := server.shareFile(t.Context(), mustRaw(body)); err == nil || !strings.Contains(err.Error(), "high-confidence secret") {
+		t.Fatalf("error = %v, want high-confidence secret refusal", err)
+	}
+}
+
+func TestShareFileRejectsBadBase64(t *testing.T) {
+	server := testServer(&fakeClient{})
+	if _, err := server.shareFile(t.Context(), mustRaw(`{"name":"x","data_base64":"not valid !!! base64"}`)); err == nil {
+		t.Fatal("expected invalid base64 error")
+	}
+	if _, err := server.shareFile(t.Context(), mustRaw(`{"name":"x"}`)); err == nil {
+		t.Fatal("expected missing data_base64 error")
+	}
+}
+
+// The programmatic bridge (Tools + CallTool + WithCredential) used by the hosted
+// Streamable-HTTP transport must enumerate and dispatch the same tools.
+func TestCallToolBridge(t *testing.T) {
+	server := testServer(&fakeClient{})
+	names := map[string]bool{}
+	for _, d := range server.Tools() {
+		names[d.Name] = true
+	}
+	if !names["share2us_share_file"] || !names["share2us_share_text"] {
+		t.Fatalf("Tools() missing expected tools: %v", names)
+	}
+	ctx := WithCredential(t.Context(), clicore.Credential{APIBase: "https://api.example.test", Token: "s2s_test"})
+	res, err := server.CallTool(ctx, "share2us_share_file", mustRaw(`{"name":"note.txt","data_base64":"aGVsbG8gd29ybGQ="}`))
+	if err != nil {
+		t.Fatalf("CallTool() error = %v", err)
+	}
+	if raw, _ := json.Marshal(res); !strings.Contains(string(raw), "pub-1") {
+		t.Fatalf("CallTool result missing share id: %s", raw)
+	}
+	if _, err := server.CallTool(ctx, "no_such_tool", mustRaw(`{}`)); err == nil {
+		t.Fatal("expected unknown tool error")
 	}
 }
