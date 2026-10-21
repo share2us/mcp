@@ -216,6 +216,7 @@ type ToolDescriptor struct {
 var toolOrder = []string{
 	"share2us_preview_file",
 	"share2us_upload_file",
+	"share2us_share_file",
 	"share2us_share_text",
 	"share2us_list_shares",
 	"share2us_get_share",
@@ -228,6 +229,7 @@ var toolOrder = []string{
 func (s *Server) registerTools() {
 	s.registerTool("share2us_preview_file", Tool{Descriptor: descriptor("share2us_preview_file", "Preflight a local file before upload confirmation.", objectSchema(map[string]any{"path": stringSchema()})), Handler: s.previewFile})
 	s.registerTool("share2us_upload_file", Tool{Descriptor: descriptor("share2us_upload_file", "Upload a previously previewed local file after explicit confirmation. A file with an .mdx extension becomes an interactive form (like Google Forms): it must contain only <Form>, <Question id=\"...\" type=\"short|long|choice|multi|email|number|date\" required=\"true\">, and <Choice> tags, with Markdown for question text, and renders as a fillable form at the share link. Responses are end-to-end encrypted to the owner; the server never sees answers.", objectSchema(map[string]any{"path": stringSchema(), "confirm": boolSchema(), "override_soft_block": boolSchema()})), Handler: s.uploadFile})
+	s.registerTool("share2us_share_file", Tool{Descriptor: descriptor("share2us_share_file", "Create a share from file bytes supplied inline as base64 (no server filesystem access). Use this to share a file you already hold the contents of (an uploaded document, a generated report). Args: name (filename, required), data_base64 (the bytes, required), content_type (optional MIME type), expires_in (optional, default 24h). A name ending in .mdx with only <Form>/<Question>/<Choice> tags becomes an interactive form (see share2us_upload_file for the tag syntax).", objectSchema(map[string]any{"name": stringSchema(), "data_base64": stringSchema(), "content_type": stringSchema(), "expires_in": stringSchema()})), Handler: s.shareFile})
 	s.registerTool("share2us_share_text", Tool{Descriptor: descriptor("share2us_share_text", "Create a text share. If name ends in .mdx and the text is a form written with only <Form>/<Question>/<Choice> tags, it becomes an interactive form instead of a plain text share (see share2us_upload_file for the tag syntax).", objectSchema(map[string]any{"text": stringSchema(), "name": stringSchema(), "expires_in": stringSchema()})), Handler: s.shareText})
 	s.registerTool("share2us_list_shares", Tool{Descriptor: descriptor("share2us_list_shares", "List shares for the authenticated account.", objectSchema(map[string]any{})), Handler: s.listShares})
 	s.registerTool("share2us_get_share", Tool{Descriptor: descriptor("share2us_get_share", "Get a share by public_id from the authenticated account's share list.", objectSchema(map[string]any{"public_id": stringSchema()})), Handler: s.getShare})
