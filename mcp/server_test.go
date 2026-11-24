@@ -34,7 +34,7 @@ func TestToolsListSchema(t *testing.T) {
 	if err := json.Unmarshal(out.Bytes(), &resp); err != nil {
 		t.Fatalf("decode response: %v", err)
 	}
-	if len(resp.Result.Tools) != 10 {
+	if len(resp.Result.Tools) != 11 {
 		t.Fatalf("tools = %d", len(resp.Result.Tools))
 	}
 	if resp.Result.Tools[0].Name != "share2us_preview_file" {
