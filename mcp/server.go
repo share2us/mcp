@@ -349,12 +349,8 @@ func (s *Server) shareText(ctx context.Context, raw json.RawMessage) (any, error
 	// share_text bypassed preflight entirely; scan it too so an agent can't paste
 	// a private key or provider token into `text` (AGENTS.md #7 — hard-block
 	// high-confidence secrets on the agent path).
-	if scan, err := clicore.ScanBytesForSecrets([]byte(args.Text), clicore.SecretScanOptions{}); err == nil {
-		for _, f := range scan.Findings {
-			if f.HighConfidence {
-				return nil, fmt.Errorf("refused: the shared text contains a high-confidence secret (%s) and cannot be shared through MCP", f.RuleID)
-			}
-		}
+	if rule := preflight.HighConfidenceSecret([]byte(args.Text)); rule != "" {
+		return nil, fmt.Errorf("refused: the shared text contains a high-confidence secret (%s) and cannot be shared through MCP", rule)
 	}
 	name := strings.TrimSpace(args.Name)
 	if name == "" {

@@ -14,6 +14,7 @@ import (
 	"strings"
 
 	clicore "github.com/share2us/cli-core"
+	"github.com/share2us/mcp/preflight"
 )
 
 // shareFile creates a share from client-supplied bytes (base64), never touching the
@@ -55,12 +56,8 @@ func (s *Server) shareFile(ctx context.Context, raw json.RawMessage) (any, error
 	}
 	// Same secret guard as share_text (AGENTS.md #7): never let an agent exfiltrate a
 	// high-confidence secret through the share path.
-	if scan, err := clicore.ScanBytesForSecrets(data, clicore.SecretScanOptions{}); err == nil {
-		for _, f := range scan.Findings {
-			if f.HighConfidence {
-				return nil, fmt.Errorf("refused: the file contains a high-confidence secret (%s) and cannot be shared through MCP", f.RuleID)
-			}
-		}
+	if rule := preflight.HighConfidenceSecret(data); rule != "" {
+		return nil, fmt.Errorf("refused: the file contains a high-confidence secret (%s) and cannot be shared through MCP", rule)
 	}
 	contentType := strings.TrimSpace(args.ContentType)
 	if contentType == "" {

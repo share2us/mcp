@@ -68,10 +68,10 @@ func TestPrivateKeyContentHardBlocks(t *testing.T) {
 func TestContentClassMarkdown(t *testing.T) {
 	markdown := []struct{ name, ctype string }{
 		{"notes.md", "text/markdown"},
-		{"notes.md", "text/plain"},        // MIME guessed wrong, extension still decides
-		{"NOTES.MD", ""},                  // no MIME at all
+		{"notes.md", "text/plain"}, // MIME guessed wrong, extension still decides
+		{"NOTES.MD", ""},           // no MIME at all
 		{"readme.markdown", "text/markdown"},
-		{"doc.txt", "text/markdown"},      // MIME is explicit even when the name is not
+		{"doc.txt", "text/markdown"}, // MIME is explicit even when the name is not
 	}
 	for _, c := range markdown {
 		if got := contentClass(c.name, c.ctype); got != "markdown" {

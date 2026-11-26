@@ -338,3 +338,30 @@ func TestCallToolBridge(t *testing.T) {
 		t.Fatal("expected unknown tool error")
 	}
 }
+
+// Share2Us's own tokens are hard-blocked on every in-memory agent path, not just
+// file preflight. Built at runtime so no token-shaped literal is committed.
+func TestAgentPathsRefuseShare2UsTokens(t *testing.T) {
+	pat := "s2u_" + "pat_" + "Ab3dEf6hIj9kLm2nOp5qRs8tUv1"
+	session := "s2s" + "_" + "Zy9xWv8uTs7rQp6oNm5lKj4iHg3fEd2cBa1-_Xy0Wv9"
+	for _, token := range []string{pat, session} {
+		server := testServer(&fakeClient{})
+		text, _ := json.Marshal(map[string]string{"text": "my token is " + token})
+		if _, err := server.shareText(t.Context(), text); err == nil || !strings.Contains(err.Error(), "share2us-") {
+			t.Fatalf("shareText err = %v, want Share2Us token refusal", err)
+		}
+		file, _ := json.Marshal(map[string]string{"name": "notes.txt", "data_base64": base64.StdEncoding.EncodeToString([]byte(token))})
+		if _, err := server.shareFile(t.Context(), file); err == nil || !strings.Contains(err.Error(), "share2us-") {
+			t.Fatalf("shareFile err = %v, want Share2Us token refusal", err)
+		}
+		page, _ := json.Marshal(map[string]string{"html": "<script>const t='" + token + "'</script>"})
+		if _, err := server.publishArtifact(t.Context(), page); err == nil || !strings.Contains(err.Error(), "share2us-") {
+			t.Fatalf("publishArtifact err = %v, want Share2Us token refusal", err)
+		}
+	}
+	// A near miss (prefix in prose) still shares.
+	server := testServer(&fakeClient{})
+	if _, err := server.shareText(t.Context(), mustRaw(`{"text":"PATs start with the s2u_pat_ prefix"}`)); err != nil {
+		t.Fatalf("shareText near-miss error = %v", err)
+	}
+}

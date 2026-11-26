@@ -95,7 +95,9 @@ func Build(path string) (Result, error) {
 	filename := filepath.Base(canonical)
 	contentType := detectContentType(filename, sample.Bytes())
 	findings := prohibitedNameFindings(filename)
+	findings = append(findings, credentialPathFindings(canonical)...)
 	findings = append(findings, secretScanFindings(canonical)...)
+	findings = append(findings, share2usTokenFindingsFile(canonical)...)
 	secretScan := scanFromFindings(findings)
 	protection := protectionFromFindings(findings)
 
