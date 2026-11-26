@@ -10,6 +10,7 @@ import (
 	"unicode/utf8"
 
 	clicore "github.com/share2us/cli-core"
+	"github.com/share2us/mcp/preflight"
 )
 
 // artifactToolDescription is written for the model that will call the tool: an artifact
@@ -48,12 +49,8 @@ func (s *Server) publishArtifact(ctx context.Context, raw json.RawMessage) (any,
 	}
 	// Same hard block as share_text: an agent must not publish a credential it was
 	// handed, least of all inside a page that runs for strangers (AGENTS.md #7).
-	if scan, err := clicore.ScanBytesForSecrets([]byte(args.HTML), clicore.SecretScanOptions{}); err == nil {
-		for _, f := range scan.Findings {
-			if f.HighConfidence {
-				return nil, fmt.Errorf("refused: the page contains a high-confidence secret (%s) and cannot be published through MCP", f.RuleID)
-			}
-		}
+	if rule := preflight.HighConfidenceSecret([]byte(args.HTML)); rule != "" {
+		return nil, fmt.Errorf("refused: the page contains a high-confidence secret (%s) and cannot be published through MCP", rule)
 	}
 	name := artifactFileName(args.Name)
 	expiresIn := strings.TrimSpace(args.ExpiresIn)
